@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "match_id": 12345,
+    "timestamp": 0.0,
+    "location": [52.5, 34.0],
+    "velocity": 5.2,
+    "direction": 45.0,
+    "acceleration": 1.2,
+    "possession": true,
+    "player": {"id": 101, "name": "Player 1"},
+    "position": {"id": 1, "name": "QB"}
+  },
+  {
+    "id": 2,
+    "match_id": 12345,
+    "timestamp": 0.0,
+    "location": [45.0, 30.0],
+    "velocity": 3.8,
+    "direction": 90.0,
+    "acceleration": 0.5,
+    "possession": false,
+    "player": {"id": 102, "name": "Player 2"},
+    "position": {"id": 2, "name": "WR"}
+  },
+  {
+    "id": 3,
+    "match_id": 12345,
+    "timestamp": 0.1,
+    "location": [53.0, 35.0],
+    "velocity": 5.5,
+    "direction": 50.0,
+    "acceleration": 1.5,
+    "possession": true,
+    "player": {"id": 101, "name": "Player 1"},
+    "position": {"id": 1, "name": "QB"}
+  },
+  {
+    "id": 4,
+    "match_id": 12345,
+    "timestamp": 0.1,
+    "location": [46.0, 32.0],
+    "velocity": 4.2,
+    "direction": 85.0,
+    "acceleration": 0.8,
+    "possession": false,
+    "player": {"id": 102, "name": "Player 2"},
+    "position": {"id": 2, "name": "WR"}
+  },
+  {
+    "id": 5,
+    "match_id": 12345,
+    "timestamp": 0.2,
+    "location": [54.0, 36.0],
+    "velocity": 6.0,
+    "direction": 55.0,
+    "acceleration": 2.0,
+    "possession": true,
+    "player": {"id": 101, "name": "Player 1"},
+    "position": {"id": 1, "name": "QB"}
+  },
+  {
+    "id": 6,
+    "match_id": 12345,
+    "timestamp": 0.2,
+    "location": [48.0, 35.0],
+    "velocity": 5.0,
+    "direction": 75.0,
+    "acceleration": 1.2,
+    "possession": false,
+    "player": {"id": 102, "name": "Player 2"},
+    "position": {"id": 2, "name": "WR"}
+  },
+  {
+    "id": 7,
+    "match_id": 12345,
+    "timestamp": 0.3,
+    "location": [55.5, 37.0],
+    "velocity": 6.5,
+    "direction": 60.0,
+    "acceleration": 2.2,
+    "possession": true,
+    "player": {"id": 101, "name": "Player 1"},
+    "position": {"id": 1, "name": "QB"}
+  },
+  {
+    "id": 8,
+    "match_id": 12345,
+    "timestamp": 0.3,
+    "location": [50.0, 38.0],
+    "velocity": 5.5,
+    "direction": 70.0,
+    "acceleration": 1.5,
+    "possession": false,
+    "player": {"id": 102, "name": "Player 2"},
+    "position": {"id": 2, "name": "WR"}
+  },
+  {
+    "id": 9,
+    "match_id": 12345,
+    "timestamp": 0.4,
+    "location": [57.0, 38.5],
+    "velocity": 7.0,
+    "direction": 65.0,
+    "acceleration": 2.5,
+    "possession": false,
+    "player": {"id": 101, "name": "Player 1"},
+    "position": {"id": 1, "name": "QB"}
+  },
+  {
+    "id": 10,
+    "match_id": 12345,
+    "timestamp": 0.4,
+    "location": [52.0, 40.0],
+    "velocity": 6.0,
+    "direction": 65.0,
+    "acceleration": 1.8,
+    "possession": true,
+    "player": {"id": 102, "name": "Player 2"},
+    "position": {"id": 2, "name": "WR"}
+  }
+]
