@@ -10,6 +10,13 @@ from .active_learning import (
     ActiveLearningManager,
     create_ui_label_payload
 )
+from .counterfactual import (
+    CounterfactualGenerator,
+    PhysicsSimulator,
+    create_counterfactual_payload,
+    Perturbation,
+    CounterfactualResult
+)
 
 __all__ = [
     'compute_opportunity_heatmap',
@@ -17,5 +24,10 @@ __all__ = [
     'save_opportunity_heatmap',
     'find_top_decision',
     'ActiveLearningManager',
-    'create_ui_label_payload'
+    'create_ui_label_payload',
+    'CounterfactualGenerator',
+    'PhysicsSimulator',
+    'create_counterfactual_payload',
+    'Perturbation',
+    'CounterfactualResult'
 ]

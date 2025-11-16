@@ -29,6 +29,22 @@ interface Insight {
   }
 }
 
+interface Counterfactual {
+  player: string
+  change: string
+  lift: number
+  valid: boolean
+  violation?: string
+  trajectory?: Array<{ x: number; y: number }>
+}
+
+interface CounterfactualPayload {
+  counterfactuals: Counterfactual[]
+  cvs: number
+  n_valid: number
+  n_total: number
+}
+
 interface LabelPrompt {
   play_id: string
   decision: string
@@ -48,6 +64,12 @@ function App() {
   const [timeSlider, setTimeSlider] = useState(0)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [customTag, setCustomTag] = useState('')
+
+  // Counterfactual state
+  const [counterfactuals, setCounterfactuals] = useState<CounterfactualPayload | null>(null)
+  const [selectedCounterfactual, setSelectedCounterfactual] = useState<number | null>(null)
+  const [delaySlider, setDelaySlider] = useState(0)
+  const [showTrajectories, setShowTrajectories] = useState(true)
 
   // Field dimensions
   const FIELD_WIDTH = 105
@@ -93,29 +115,55 @@ function App() {
       }
     }
 
-    // Sample label prompt (flagged for low confidence)
-    const samplePrompt: LabelPrompt = {
-      play_id: 'play_sample_1',
-      decision: 'Attack left: +31% xT',
-      confidence: 'Medium',
-      flagged_reason: 'Borderline decision (entropy: 0.75)',
-      ui_config: {
-        show_modal: true,
-        buttons: [
-          { id: 'success', label: 'Success', color: 'green' },
-          { id: 'fail', label: 'Fail', color: 'red' },
-          { id: 'intercepted', label: 'Intercepted', color: 'orange' }
-        ],
-        tag_suggestions: [
-          'LB late', 'CB overcommit', 'Safety blitz',
-          'WR open', 'Pocket collapsed', 'Coverage bust'
-        ]
-      }
+    // Sample counterfactuals
+    const sampleCounterfactuals: CounterfactualPayload = {
+      counterfactuals: [
+        {
+          player: 'WR',
+          change: 'Delay 0.5s',
+          lift: -0.12,
+          valid: true,
+          trajectory: [
+            { x: 65, y: 15 },
+            { x: 65, y: 15 },
+            { x: 67, y: 16 },
+            { x: 69, y: 17 },
+            { x: 72, y: 18 }
+          ]
+        },
+        {
+          player: 'WR',
+          change: 'Speed -10%',
+          lift: -0.08,
+          valid: true,
+          trajectory: [
+            { x: 65, y: 15 },
+            { x: 66, y: 15 },
+            { x: 68, y: 16 },
+            { x: 70, y: 17 }
+          ]
+        },
+        {
+          player: 'WR',
+          change: 'Angle +15°',
+          lift: 0.15,
+          valid: true,
+          trajectory: [
+            { x: 65, y: 15 },
+            { x: 67, y: 13 },
+            { x: 70, y: 11 },
+            { x: 73, y: 10 }
+          ]
+        }
+      ],
+      cvs: 0.967,
+      n_valid: 3,
+      n_total: 3
     }
 
     setPlayData(samplePlay)
     setInsight(sampleInsight)
-    setLabelPrompt(samplePrompt)
+    setCounterfactuals(sampleCounterfactuals)
   }
 
   const handleLabelSubmit = (outcome: string) => {
@@ -129,11 +177,7 @@ function App() {
     }
 
     console.log('Label submitted:', label)
-
-    // In real app, this would save to backend
     alert(`Label saved: ${outcome}\nTags: ${selectedTags.join(', ')}`)
-
-    // Clear prompt
     setLabelPrompt(null)
     setSelectedTags([])
   }
@@ -153,9 +197,19 @@ function App() {
     }
   }
 
+  const handleDelayChange = (value: number) => {
+    setDelaySlider(value)
+    // In real app, would trigger re-simulation with new delay
+    console.log(`Delay changed to ${value}s`)
+  }
+
   if (!playData || !insight) {
     return <div className="container">Loading...</div>
   }
+
+  const selectedCf = selectedCounterfactual !== null && counterfactuals
+    ? counterfactuals.counterfactuals[selectedCounterfactual]
+    : null
 
   return (
     <div className="container">
@@ -180,6 +234,11 @@ function App() {
           <span className="detail-item">
             <strong>Opportunity:</strong> {(insight.details.opportunity * 100).toFixed(0)}%
           </span>
+          {counterfactuals && (
+            <span className="detail-item cvs-badge">
+              <strong>CVS:</strong> {(counterfactuals.cvs * 100).toFixed(1)}%
+            </span>
+          )}
         </div>
       </div>
 
@@ -223,6 +282,34 @@ function App() {
             />
           )}
 
+          {/* Counterfactual trajectory */}
+          {showTrajectories && selectedCf && selectedCf.trajectory && (
+            <g className="trajectory">
+              {/* Draw path */}
+              <polyline
+                points={selectedCf.trajectory
+                  .map(p => `${scaleX(p.x)},${scaleY(p.y)}`)
+                  .join(' ')}
+                fill="none"
+                stroke={selectedCf.lift > 0 ? '#4CAF50' : '#f44336'}
+                strokeWidth="3"
+                strokeDasharray="5,5"
+                opacity="0.8"
+              />
+              {/* Draw trajectory points */}
+              {selectedCf.trajectory.map((pos, idx) => (
+                <circle
+                  key={idx}
+                  cx={scaleX(pos.x)}
+                  cy={scaleY(pos.y)}
+                  r="3"
+                  fill={selectedCf.lift > 0 ? '#4CAF50' : '#f44336'}
+                  opacity={0.6 + (idx / selectedCf.trajectory!.length) * 0.4}
+                />
+              ))}
+            </g>
+          )}
+
           {/* Players */}
           {playData.players.map((player) => (
             <g key={player.id}>
@@ -258,6 +345,65 @@ function App() {
           />
         </svg>
       </div>
+
+      {/* Counterfactual Controls */}
+      {counterfactuals && (
+        <div className="counterfactual-panel">
+          <h4>What-If Scenarios</h4>
+
+          <div className="counterfactual-list">
+            {counterfactuals.counterfactuals.map((cf, idx) => (
+              <div
+                key={idx}
+                className={`counterfactual-item ${selectedCounterfactual === idx ? 'selected' : ''} ${cf.lift > 0 ? 'positive' : 'negative'}`}
+                onClick={() => setSelectedCounterfactual(idx)}
+              >
+                <div className="cf-header">
+                  <span className="cf-player">{cf.player}</span>
+                  <span className={`cf-lift ${cf.lift > 0 ? 'positive' : 'negative'}`}>
+                    {cf.lift > 0 ? '+' : ''}{(cf.lift * 100).toFixed(1)}% xT
+                  </span>
+                </div>
+                <div className="cf-change">{cf.change}</div>
+                {!cf.valid && (
+                  <div className="cf-invalid">⚠ {cf.violation}</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Delay Slider */}
+          <div className="delay-control">
+            <label>
+              Simulation Delay: {delaySlider.toFixed(2)}s
+              <span className="cvs-indicator">
+                {counterfactuals.n_valid}/{counterfactuals.n_total} valid
+              </span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={delaySlider}
+              onChange={(e) => handleDelayChange(parseFloat(e.target.value))}
+              className="delay-slider"
+            />
+          </div>
+
+          {/* Trajectory toggle */}
+          <div className="trajectory-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={showTrajectories}
+                onChange={(e) => setShowTrajectories(e.target.checked)}
+              />
+              Show trajectories
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Timeline Slider */}
       <div className="timeline">
@@ -347,6 +493,9 @@ function App() {
           <li>WR open in {insight.details.zone} zone</li>
           <li>Low defensive pressure ({(insight.details.opportunity * 100).toFixed(0)}%)</li>
           <li>xT gradient favorable (+{insight.details.xt_improvement}%)</li>
+          {counterfactuals && counterfactuals.cvs >= 0.92 && (
+            <li>High counterfactual validity ({(counterfactuals.cvs * 100).toFixed(1)}%)</li>
+          )}
         </ul>
       </div>
     </div>
