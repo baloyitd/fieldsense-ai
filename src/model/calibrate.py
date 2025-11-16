@@ -1,39 +1,133 @@
 """
-Team-specific calibration engine for FieldSense AI v3.0
+Team-specific calibration engine for FieldSense AI v3.1
 Fine-tunes LoRA adapter on user plays in <42 seconds
+Includes agent-assisted reasoning for high-entropy plays
 """
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import numpy as np
 import time
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
 from .adapter import BackboneWithAdapter, create_adapter_model
 from .pytorch_backbone import preprocess_frames_torch
 
+# Agent integration for high-entropy reasoning
+try:
+    from ..agent import CalibrationReasoner
+    AGENT_AVAILABLE = True
+except ImportError:
+    AGENT_AVAILABLE = False
+    logging.warning("Agent not available - calibration will run without agent reasoning")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def compute_entropy(predictions: torch.Tensor) -> torch.Tensor:
+    """
+    Compute entropy of xT predictions.
+
+    Args:
+        predictions: Batch of xT grids (B, 105, 68)
+
+    Returns:
+        Entropy values (B,)
+    """
+    # Normalize to probability distribution
+    probs = torch.softmax(predictions.view(predictions.shape[0], -1), dim=1)
+
+    # Compute entropy: H = -sum(p * log(p))
+    entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
+
+    # Normalize to [0, 1] range
+    max_entropy = np.log(105 * 68)
+    entropy = entropy / max_entropy
+
+    return entropy
+
+
+def identify_target_zone(frame: Dict[str, Any]) -> str:
+    """
+    Identify target zone from frame data.
+
+    Args:
+        frame: Normalized frame dictionary
+
+    Returns:
+        Zone name (e.g., "left_attack", "center_attack")
+    """
+    # Get ball position or average player position
+    if 'ball' in frame and frame['ball']:
+        x = frame['ball'].get('x', 52.5)
+        y = frame['ball'].get('y', 34.0)
+    elif frame['players']:
+        # Average position of possession players
+        possession_players = [p for p in frame['players'] if p.get('possession', False)]
+        if possession_players:
+            x = np.mean([p['x'] for p in possession_players])
+            y = np.mean([p['y'] for p in possession_players])
+        else:
+            x = np.mean([p['x'] for p in frame['players']])
+            y = np.mean([p['y'] for p in frame['players']])
+    else:
+        return 'center_attack'
+
+    # Determine zone (field: 105m x 68m)
+    # Attack zones: x > 52.5
+    # Defense zones: x <= 52.5
+    # Left: y < 22.67, Center: 22.67 <= y <= 45.33, Right: y > 45.33
+
+    if x > 52.5:
+        # Attack zone
+        if y < 22.67:
+            return 'left_attack'
+        elif y > 45.33:
+            return 'right_attack'
+        else:
+            return 'center_attack'
+    else:
+        # Defense zone
+        if y < 22.67:
+            return 'left_defense'
+        else:
+            return 'right_defense'
+
 
 class PlayDataset(Dataset):
-    """Dataset for user plays."""
+    """Dataset for user plays with optional sample weighting."""
 
-    def __init__(self, frames: List[Dict[str, Any]], labels: Optional[List[np.ndarray]] = None):
+    def __init__(
+        self,
+        frames: List[Dict[str, Any]],
+        labels: Optional[List[np.ndarray]] = None,
+        sample_weights: Optional[np.ndarray] = None
+    ):
         """
         Initialize dataset.
 
         Args:
             frames: List of normalized frame dictionaries
             labels: Optional list of target xT grids (if None, uses self-supervised)
+            sample_weights: Optional sample weights for focused training
         """
         self.frames = frames
         self.labels = labels
+        self.sample_weights = sample_weights
 
         # If no labels, create synthetic targets based on possession zones
         if self.labels is None:
             self.labels = self._create_synthetic_targets()
+
+        # If no sample weights, use uniform weights
+        if self.sample_weights is None:
+            self.sample_weights = np.ones(len(self.frames))
 
     def _create_synthetic_targets(self) -> List[np.ndarray]:
         """Create synthetic xT targets from play data."""
@@ -84,6 +178,17 @@ class PlayDataset(Dataset):
 
         return frame_tensor.squeeze(0), target_tensor
 
+    def get_weights(self) -> np.ndarray:
+        """Get sample weights for weighted sampling."""
+        return self.sample_weights
+
+    def update_weights(self, new_weights: np.ndarray):
+        """Update sample weights (e.g., from agent reasoning)."""
+        if len(new_weights) == len(self.frames):
+            self.sample_weights = new_weights
+        else:
+            logger.warning(f"Weight length mismatch: {len(new_weights)} vs {len(self.frames)}")
+
 
 def calibrate_model(
     model: BackboneWithAdapter,
@@ -95,10 +200,14 @@ def calibrate_model(
     train_split: float = 0.8,
     use_bf16: bool = True,
     max_time: float = 42.0,
+    use_agent: bool = True,
+    entropy_threshold: float = 0.8,
+    agent_time_budget: float = 10.0,
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
     Calibrate model on user plays with LoRA fine-tuning.
+    Includes agent-assisted reasoning for high-entropy plays.
 
     Args:
         model: BackboneWithAdapter model
@@ -110,12 +219,26 @@ def calibrate_model(
         train_split: Train/val split ratio (default: 0.8)
         use_bf16: Use BF16 mixed precision (default: True)
         max_time: Maximum calibration time in seconds (default: 42.0)
+        use_agent: Use agent reasoning for high-entropy plays (default: True)
+        entropy_threshold: Entropy threshold for agent reasoning (default: 0.8)
+        agent_time_budget: Maximum time for agent reasoning (default: 10.0s)
         verbose: Print progress (default: True)
 
     Returns:
         Dictionary with calibration metrics
     """
     start_time = time.time()
+
+    # Initialize agent if requested
+    agent_reasoner = None
+    if use_agent and AGENT_AVAILABLE:
+        try:
+            agent_reasoner = CalibrationReasoner()
+            if verbose:
+                print("Agent reasoning enabled")
+        except Exception as e:
+            logger.warning(f"Failed to initialize agent: {e}")
+            agent_reasoner = None
 
     if verbose:
         print("="*60)
@@ -173,8 +296,12 @@ def calibrate_model(
     history = {
         'train_loss': [],
         'val_loss': [],
-        'epoch_times': []
+        'epoch_times': [],
+        'agent_refinements': []
     }
+
+    # Track high-entropy plays for agent reasoning
+    high_entropy_plays = []
 
     model.train()
 
@@ -193,6 +320,10 @@ def calibrate_model(
         n_batches = 0
 
         for batch_idx, (inputs, targets) in enumerate(train_loader):
+            # Get current batch indices
+            batch_start_idx = batch_idx * batch_size
+            batch_end_idx = min(batch_start_idx + batch_size, len(train_dataset))
+
             # Forward pass
             if use_amp:
                 with torch.cuda.amp.autocast():
@@ -201,6 +332,23 @@ def calibrate_model(
             else:
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
+
+            # Compute entropy for agent reasoning
+            if agent_reasoner is not None:
+                with torch.no_grad():
+                    batch_entropy = compute_entropy(outputs)
+
+                    # Collect high-entropy plays
+                    for i, ent in enumerate(batch_entropy):
+                        if ent.item() > entropy_threshold:
+                            frame_idx = batch_start_idx + i
+                            if frame_idx < len(train_frames):
+                                high_entropy_plays.append({
+                                    'frame': train_frames[frame_idx],
+                                    'entropy': ent.item(),
+                                    'target_zone': identify_target_zone(train_frames[frame_idx]),
+                                    'frame_idx': frame_idx
+                                })
 
             # Backward pass
             optimizer.zero_grad()
@@ -221,6 +369,69 @@ def calibrate_model(
                 break
 
         avg_train_loss = train_loss / max(n_batches, 1)
+
+        # Agent reasoning after epoch (if high-entropy plays detected)
+        if agent_reasoner is not None and len(high_entropy_plays) > 0:
+            agent_start = time.time()
+
+            if verbose:
+                print(f"  Agent: Reasoning over {len(high_entropy_plays)} high-entropy plays...")
+
+            try:
+                # Call agent reasoning
+                zone_weights = agent_reasoner.reason_calibration(
+                    high_entropy_plays,
+                    entropy_threshold=entropy_threshold
+                )
+
+                # Apply zone weights to dataset
+                if 'reasoning' in zone_weights:
+                    if verbose:
+                        print(f"  Agent: {zone_weights['reasoning']}")
+                    del zone_weights['reasoning']
+
+                # Compute new sample weights
+                new_weights = agent_reasoner.compute_sample_weights(
+                    train_frames,
+                    zone_weights
+                )
+
+                # Update dataset weights
+                train_dataset.update_weights(new_weights)
+
+                # Recreate dataloader with updated weights
+                train_loader = DataLoader(
+                    train_dataset,
+                    batch_size=batch_size,
+                    sampler=WeightedRandomSampler(
+                        weights=new_weights,
+                        num_samples=len(train_dataset),
+                        replacement=True
+                    ),
+                    num_workers=0
+                )
+
+                agent_time = time.time() - agent_start
+                history['agent_refinements'].append({
+                    'epoch': epoch + 1,
+                    'zone_weights': zone_weights,
+                    'n_high_entropy': len(high_entropy_plays),
+                    'agent_time': agent_time
+                })
+
+                if verbose:
+                    print(f"  Agent: Refined weights in {agent_time:.2f}s")
+
+                # Clear high-entropy plays for next epoch
+                high_entropy_plays = []
+
+                # Check agent time budget
+                if agent_time > agent_time_budget:
+                    logger.warning(f"Agent reasoning took {agent_time:.2f}s (budget: {agent_time_budget}s)")
+
+            except Exception as e:
+                logger.error(f"Agent reasoning failed: {e}")
+                high_entropy_plays = []
 
         # Validation
         val_loss = 0.0
@@ -260,13 +471,19 @@ def calibrate_model(
         'n_train': len(train_frames),
         'n_val': len(val_frames),
         'adapter_path': output_path,
-        'history': history
+        'history': history,
+        'agent_enabled': agent_reasoner is not None,
+        'n_agent_refinements': len(history['agent_refinements'])
     }
 
     if verbose:
         print("="*60)
         print(f"Calibration complete in {total_time:.2f}s")
         print(f"Adapter saved to: {output_path}")
+        if agent_reasoner is not None and history['agent_refinements']:
+            print(f"Agent refinements: {len(history['agent_refinements'])} epochs")
+            total_agent_time = sum(r['agent_time'] for r in history['agent_refinements'])
+            print(f"Total agent time: {total_agent_time:.2f}s")
         print("="*60)
 
     return results

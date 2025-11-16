@@ -22,12 +22,18 @@ from .load import (
     load_tokenizer,
     check_model_availability
 )
+from .calibrate_reason import (
+    CalibrationReasoner,
+    reason_calibration
+)
 
 __all__ = [
     'MiroThinkerAgent',
     'load_model',
     'load_tokenizer',
-    'check_model_availability'
+    'check_model_availability',
+    'CalibrationReasoner',
+    'reason_calibration'
 ]
 
 __version__ = '3.1.0'
