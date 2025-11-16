@@ -26,6 +26,11 @@ from .calibrate_reason import (
     CalibrationReasoner,
     reason_calibration
 )
+from .counter_reason import (
+    CounterfactualReasoner,
+    reason_counterfactual,
+    verify_counterfactuals
+)
 
 __all__ = [
     'MiroThinkerAgent',
@@ -33,7 +38,10 @@ __all__ = [
     'load_tokenizer',
     'check_model_availability',
     'CalibrationReasoner',
-    'reason_calibration'
+    'reason_calibration',
+    'CounterfactualReasoner',
+    'reason_counterfactual',
+    'verify_counterfactuals'
 ]
 
 __version__ = '3.1.0'

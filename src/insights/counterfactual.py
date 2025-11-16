@@ -1,12 +1,25 @@
 """
-Physics-Constrained Counterfactuals for FieldSense AI v3.0
+Physics-Constrained Counterfactuals for FieldSense AI v3.1
 Simulates alternative play scenarios with realistic constraints
+Enhanced with MiroThinker agent verification for improved validity
 """
 
 import numpy as np
+import logging
 from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from copy import deepcopy
+
+# Agent integration for counterfactual verification
+try:
+    from ..agent import CounterfactualReasoner
+    AGENT_AVAILABLE = True
+except ImportError:
+    AGENT_AVAILABLE = False
+    logging.warning("Agent not available - counterfactuals will run without agent verification")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # Field constraints
@@ -29,13 +42,18 @@ class Perturbation:
 
 @dataclass
 class CounterfactualResult:
-    """Counterfactual simulation result."""
+    """Counterfactual simulation result with agent verification."""
     player: str
     change: str
-    lift: float  # delta xT
+    lift: float  # delta xT (refined by agent if available)
     valid: bool
     violation_reason: Optional[str] = None
     new_positions: Optional[List[Dict[str, float]]] = None
+    # Agent verification fields (v3.1)
+    cvs: Optional[float] = None  # Counterfactual Validity Score
+    agent_trace: Optional[str] = None  # Agent reasoning trace
+    chain_steps: Optional[int] = None  # Number of reasoning steps
+    iterations: Optional[int] = None  # Re-chain iterations
 
 
 class PhysicsSimulator:
@@ -174,11 +192,38 @@ class PhysicsSimulator:
 
 
 class CounterfactualGenerator:
-    """Generates and validates counterfactual scenarios."""
+    """Generates and validates counterfactual scenarios with agent verification."""
 
-    def __init__(self, simulator: Optional[PhysicsSimulator] = None):
-        """Initialize counterfactual generator."""
+    def __init__(
+        self,
+        simulator: Optional[PhysicsSimulator] = None,
+        use_agent: bool = True,
+        cvs_threshold: float = 0.95
+    ):
+        """
+        Initialize counterfactual generator.
+
+        Args:
+            simulator: Physics simulator (default: PhysicsSimulator())
+            use_agent: Enable agent verification (default: True)
+            cvs_threshold: Minimum CVS for agent verification (default: 0.95)
+        """
         self.simulator = simulator or PhysicsSimulator()
+        self.use_agent = use_agent
+        self.cvs_threshold = cvs_threshold
+
+        # Initialize agent if requested
+        self.agent_reasoner = None
+        if self.use_agent and AGENT_AVAILABLE:
+            try:
+                self.agent_reasoner = CounterfactualReasoner(
+                    cvs_threshold=cvs_threshold,
+                    max_retries=3
+                )
+                logger.info("Agent verification enabled for counterfactuals")
+            except Exception as e:
+                logger.warning(f"Failed to initialize agent: {e}")
+                self.agent_reasoner = None
 
     def generate_perturbations(
         self,
@@ -392,7 +437,7 @@ class CounterfactualGenerator:
         n_scenarios: int = 3
     ) -> Tuple[List[CounterfactualResult], float]:
         """
-        Generate multiple counterfactual scenarios.
+        Generate multiple counterfactual scenarios with agent verification.
 
         Args:
             play_data: Original play data
@@ -442,19 +487,73 @@ class CounterfactualGenerator:
                     player_name = p.get('role', pert.player_id)
                     break
 
+            # Agent verification (if enabled)
+            agent_cvs = None
+            agent_trace = None
+            chain_steps = None
+            iterations = None
+            refined_lift = delta_xt
+
+            if self.agent_reasoner is not None:
+                # Prepare perturbation and simulation result for agent
+                pert_dict = {
+                    'player_id': pert.player_id,
+                    'delay': pert.delay,
+                    'speed_factor': pert.speed_factor,
+                    'angle_delta': pert.angle_delta
+                }
+
+                sim_result = {
+                    'valid': is_valid,
+                    'violation_reason': violation,
+                    'lift': delta_xt,
+                    'ball_x': ball_x,
+                    'simulated_xt': simulated_xt
+                }
+
+                try:
+                    # Call agent verification with re-chain logic
+                    agent_result = self.agent_reasoner.verify_and_refine(pert_dict, sim_result)
+
+                    # Extract agent results
+                    refined_lift = agent_result.get('lift', delta_xt)
+                    agent_cvs = agent_result.get('cvs', None)
+                    agent_trace = agent_result.get('trace', None)
+                    chain_steps = agent_result.get('chain_steps', None)
+                    iterations = agent_result.get('iterations', 1)
+
+                    # Update validity based on agent CVS
+                    if agent_cvs is not None and agent_cvs < self.cvs_threshold:
+                        is_valid = False
+                        if not violation:
+                            violation = f"Low agent confidence (CVS: {agent_cvs:.3f})"
+
+                except Exception as e:
+                    logger.warning(f"Agent verification failed: {e}")
+
             result = CounterfactualResult(
                 player=player_name,
                 change=change,
-                lift=delta_xt,
+                lift=refined_lift,
                 valid=is_valid,
                 violation_reason=violation,
-                new_positions=simulated_play.get('trajectory', {}).get('positions', [])
+                new_positions=simulated_play.get('trajectory', {}).get('positions', []),
+                cvs=agent_cvs,
+                agent_trace=agent_trace,
+                chain_steps=chain_steps,
+                iterations=iterations
             )
 
             results.append(result)
 
-        # Compute CVS
-        cvs = self.compute_cvs(results)
+        # Compute CVS (aggregate from agent if available, else physics-based)
+        if self.agent_reasoner is not None and any(r.cvs is not None for r in results):
+            # Use agent CVS scores
+            cvs_scores = [r.cvs for r in results if r.cvs is not None]
+            cvs = float(np.mean(cvs_scores)) if cvs_scores else self.compute_cvs(results)
+        else:
+            # Use physics-based CVS
+            cvs = self.compute_cvs(results)
 
         return results, cvs
 
@@ -462,20 +561,24 @@ class CounterfactualGenerator:
 def create_counterfactual_payload(
     play_data: Dict[str, Any],
     original_xt: float,
-    n_scenarios: int = 3
+    n_scenarios: int = 3,
+    use_agent: bool = True,
+    lightweight: bool = True
 ) -> Dict[str, Any]:
     """
-    Create counterfactual payload for UI.
+    Create counterfactual payload for UI with agent verification.
 
     Args:
         play_data: Original play data
         original_xt: Original xT value
         n_scenarios: Number of scenarios
+        use_agent: Enable agent verification (default: True)
+        lightweight: Distill to lightweight output <1MB (default: True)
 
     Returns:
         Payload with counterfactuals and CVS
     """
-    generator = CounterfactualGenerator()
+    generator = CounterfactualGenerator(use_agent=use_agent)
     results, cvs = generator.generate_counterfactuals(
         play_data,
         original_xt,
@@ -493,18 +596,53 @@ def create_counterfactual_payload(
             'violation': result.violation_reason
         }
 
-        # Add trajectory if available
+        # Add agent verification fields (v3.1)
+        if result.cvs is not None:
+            cf['cvs'] = round(result.cvs, 3)
+
+        if result.chain_steps is not None:
+            cf['chain_steps'] = result.chain_steps
+
+        if result.iterations is not None:
+            cf['iterations'] = result.iterations
+
+        # Add agent trace (truncate if lightweight mode)
+        if result.agent_trace:
+            if lightweight and len(result.agent_trace) > 200:
+                cf['agent_trace'] = result.agent_trace[:197] + "..."
+            else:
+                cf['agent_trace'] = result.agent_trace
+
+        # Add trajectory if available (sample if lightweight mode)
         if result.new_positions:
-            cf['trajectory'] = [
-                {'x': float(pos[0]), 'y': float(pos[1])}
-                for pos in result.new_positions
-            ]
+            if lightweight and len(result.new_positions) > 20:
+                # Sample every nth position to reduce size
+                step = len(result.new_positions) // 20
+                sampled = result.new_positions[::step][:20]
+                cf['trajectory'] = [
+                    {'x': round(float(pos[0]), 2), 'y': round(float(pos[1]), 2)}
+                    for pos in sampled
+                ]
+            else:
+                cf['trajectory'] = [
+                    {'x': round(float(pos[0]), 2), 'y': round(float(pos[1]), 2)}
+                    for pos in result.new_positions
+                ]
 
         counterfactuals.append(cf)
 
-    return {
+    payload = {
         'counterfactuals': counterfactuals,
         'cvs': round(cvs, 3),
         'n_valid': sum(1 for cf in counterfactuals if cf['valid']),
-        'n_total': len(counterfactuals)
+        'n_total': len(counterfactuals),
+        'agent_enabled': use_agent and AGENT_AVAILABLE
     }
+
+    # Estimate payload size and warn if too large
+    import sys
+    payload_size = sys.getsizeof(str(payload))
+    if payload_size > 1_000_000:  # 1MB
+        logger.warning(f"Payload size ({payload_size:,} bytes) exceeds 1MB limit")
+
+    return payload
