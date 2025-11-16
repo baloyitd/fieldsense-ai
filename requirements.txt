@@ -7,3 +7,10 @@ onnxruntime>=1.15.0
 torch>=2.0.0
 peft>=0.5.0
 scipy>=1.10.0
+
+# MiroThinker Agent (v3.1)
+transformers>=4.45.0
+bitsandbytes>=0.41.0
+accelerate>=0.24.0
+optimum[onnxruntime]>=1.14.0
+pyyaml>=6.0

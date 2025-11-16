@@ -1,0 +1,58 @@
+# FieldSense AI v3.1 - MiroThinker Agent Configuration
+
+# Toggle agent on/off (set to true to enable)
+toggle: false
+
+# Model configuration
+model:
+  name: "miromind-ai/MiroThinker-v1.0-30B"
+  quantization: "4bit"  # 4bit, 8bit, or fp16
+  device_map: "auto"    # auto, cpu, cuda:0, etc.
+  offline_mode: true    # Privacy-compliant: no external downloads
+
+# Generation parameters
+generation:
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  top_k: 50
+  do_sample: true
+  repetition_penalty: 1.1
+
+# Prompt template for reasoning
+# Available variables: {xT_json}, {players}, {ball_x}, {ball_y}
+prompt_template: |
+  Reason over football play: {xT_json}
+
+  Players: {players}
+  Ball position: ({ball_x}, {ball_y})
+
+  Chain: [steps]
+  Output: refined_insights
+
+# Agent behavior
+reasoning:
+  enable_chain_of_thought: true
+  verify_physics: true
+  check_offside: true
+  analyze_defenders: true
+  min_confidence_threshold: 0.75
+
+# Performance tuning
+performance:
+  max_batch_size: 1
+  use_cache: true
+  gradient_checkpointing: false
+
+# Privacy and compliance
+privacy:
+  local_only: true
+  no_telemetry: true
+  cache_models: true
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_reasoning_steps: true
+  save_outputs: true
+  output_dir: "outputs/agent_reasoning"
