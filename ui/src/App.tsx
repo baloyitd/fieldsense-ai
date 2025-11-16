@@ -57,6 +57,22 @@ interface LabelPrompt {
   }
 }
 
+interface LiveFrame {
+  timestamp: number
+  frame_id: number
+  xT_value: number
+  fps: number
+  overlay_url?: string
+}
+
+interface ClipInfo {
+  clip_id: string
+  timestamp: number
+  xT_value: number
+  duration: number
+  file_path: string
+}
+
 function App() {
   const [playData, setPlayData] = useState<PlayData | null>(null)
   const [insight, setInsight] = useState<Insight | null>(null)
@@ -70,6 +86,13 @@ function App() {
   const [selectedCounterfactual, setSelectedCounterfactual] = useState<number | null>(null)
   const [delaySlider, setDelaySlider] = useState(0)
   const [showTrajectories, setShowTrajectories] = useState(true)
+
+  // Live mode state
+  const [liveMode, setLiveMode] = useState(false)
+  const [liveFrame, setLiveFrame] = useState<LiveFrame | null>(null)
+  const [videoSrc, setVideoSrc] = useState<string | null>(null)
+  const [clips, setClips] = useState<ClipInfo[]>([])
+  const [showOverlay, setShowOverlay] = useState(true)
 
   // Field dimensions
   const FIELD_WIDTH = 105
@@ -239,8 +262,83 @@ function App() {
               <strong>CVS:</strong> {(counterfactuals.cvs * 100).toFixed(1)}%
             </span>
           )}
+          {liveFrame && (
+            <span className="detail-item fps-indicator">
+              <strong>FPS:</strong> {liveFrame.fps.toFixed(1)}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Live Mode Toggle */}
+      <div className="live-controls">
+        <button
+          className={`live-toggle ${liveMode ? 'active' : ''}`}
+          onClick={() => setLiveMode(!liveMode)}
+        >
+          {liveMode ? '⏸ Pause Live' : '▶ Start Live'}
+        </button>
+        {liveMode && (
+          <label className="overlay-toggle">
+            <input
+              type="checkbox"
+              checked={showOverlay}
+              onChange={(e) => setShowOverlay(e.target.checked)}
+            />
+            Show overlay
+          </label>
+        )}
+        {liveFrame && (
+          <div className="live-stats">
+            Frame: {liveFrame.frame_id} | xT: {liveFrame.xT_value.toFixed(3)}
+          </div>
+        )}
+      </div>
+
+      {/* Live Video Player */}
+      {liveMode && (
+        <div className="video-container">
+          <div className="video-wrapper">
+            {videoSrc ? (
+              <video
+                src={videoSrc}
+                autoPlay
+                muted
+                className="live-video"
+              />
+            ) : (
+              <div className="video-placeholder">
+                <p>Connecting to live stream...</p>
+              </div>
+            )}
+            {showOverlay && (
+              <canvas
+                className="video-overlay"
+                width="1920"
+                height="1080"
+              />
+            )}
+          </div>
+          {clips.length > 0 && (
+            <div className="clips-panel">
+              <h4>Auto-Generated Clips</h4>
+              <div className="clips-list">
+                {clips.map((clip) => (
+                  <div key={clip.clip_id} className="clip-item">
+                    <div className="clip-header">
+                      <span className="clip-id">{clip.clip_id}</span>
+                      <span className="clip-xt">xT: {clip.xT_value.toFixed(3)}</span>
+                    </div>
+                    <div className="clip-details">
+                      Duration: {clip.duration}s | Time: {clip.timestamp.toFixed(1)}s
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Field Canvas */}
       <div className="field-container">
