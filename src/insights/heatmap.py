@@ -1,13 +1,26 @@
 """
-Exploitation Heatmap for FieldSense AI v3.0
+Exploitation Heatmap for FieldSense AI v3.1
 Computes opportunity from uncertainty + pressure for decision-making
+Enhanced with MiroThinker agent for dynamic opportunity chaining
 """
 
 import numpy as np
+import logging
 from typing import Dict, Any, List, Tuple, Optional
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+# Agent integration for opportunity chaining
+try:
+    from ..agent import chain_heatmap_opportunities
+    AGENT_AVAILABLE = True
+except ImportError:
+    AGENT_AVAILABLE = False
+    logging.warning("Agent not available - heatmap will run without agent chaining")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def compute_entropy(xt_grid: np.ndarray, epsilon: float = 1e-10) -> np.ndarray:
@@ -262,18 +275,22 @@ def find_top_decision(
 def generate_insight(
     xt_grid: np.ndarray,
     player_positions: List[Dict[str, float]],
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    use_agent: bool = False,
+    agent_threshold: float = 0.7
 ) -> Dict[str, Any]:
     """
-    Generate complete exploitation insight with heatmap.
+    Generate complete exploitation insight with heatmap and optional agent chaining.
 
     Args:
         xt_grid: xT predictions of shape (H, W)
         player_positions: List of player dictionaries
         output_path: Optional path to save heatmap PNG
+        use_agent: Enable agent opportunity chaining (default: False)
+        agent_threshold: Minimum opportunity threshold for agent analysis (default: 0.7)
 
     Returns:
-        Insight dictionary with decision, zones, confidence
+        Insight dictionary with decision, zones, confidence, and optional agent analysis
     """
     # Compute opportunity heatmap
     opportunity = compute_opportunity_heatmap(xt_grid, player_positions)
@@ -281,20 +298,67 @@ def generate_insight(
     # Find top decision
     decision = find_top_decision(opportunity, xt_grid, player_positions)
 
-    # Create output
+    # Create base output
     insight = {
         'top_decision': decision['top_decision'],
         'zones': opportunity,
         'confidence': decision['confidence'],
-        'details': decision
+        'details': decision,
+        'agent_enabled': False
     }
+
+    # Agent chaining (if enabled and high reward detected)
+    if use_agent and AGENT_AVAILABLE:
+        max_opportunity = decision.get('opportunity', 0.0)
+
+        if max_opportunity >= agent_threshold:
+            logger.info(f"High reward detected ({max_opportunity:.3f}), running agent chaining...")
+
+            try:
+                # Run agent chaining on top zones
+                agent_analysis = chain_heatmap_opportunities(
+                    opportunity,
+                    xt_grid,
+                    enable_agent=True
+                )
+
+                if agent_analysis:
+                    # Merge agent analysis into insight
+                    insight['agent_enabled'] = True
+                    insight['agent_analysis'] = agent_analysis
+
+                    # Update zones with risk vectors from agent
+                    if 'upgraded_zones' in agent_analysis:
+                        insight['upgraded_zones'] = agent_analysis['upgraded_zones']
+
+                    # Enhance top decision with agent insights
+                    if 'primary_action' in agent_analysis:
+                        primary_action = agent_analysis['primary_action']
+
+                        # Add risk info if available
+                        if agent_analysis.get('risks'):
+                            risk_summary = agent_analysis['risks'][0]  # First risk
+                            insight['top_decision'] = f"{primary_action}, but {risk_summary}"
+                        else:
+                            insight['top_decision'] = primary_action
+
+                    # Add chain depth
+                    if 'depth' in agent_analysis:
+                        insight['chain_depth'] = agent_analysis['depth']
+
+                    logger.info(f"Agent chaining complete (depth: {agent_analysis.get('depth', 'unknown')})")
+
+            except Exception as e:
+                logger.warning(f"Agent chaining failed: {e}")
+                insight['agent_enabled'] = False
+                insight['agent_error'] = str(e)
 
     # Save visualization if requested
     if output_path:
         save_opportunity_heatmap(
             opportunity,
             output_path,
-            title=decision['top_decision'],
+            title=insight['top_decision'],
             confidence=decision['confidence']
         )
 

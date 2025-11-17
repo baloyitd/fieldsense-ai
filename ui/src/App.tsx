@@ -27,6 +27,20 @@ interface Insight {
     opportunity: number
     xt_improvement: number
   }
+  agent_enabled?: boolean
+  chain_depth?: number
+  upgraded_zones?: Record<string, {
+    base_opportunity: number
+    risk_vector: number
+    confidence: number
+    reasoning: string
+  }>
+  agent_analysis?: {
+    depth: number
+    primary_action: string
+    risks: string[]
+    chain_summary: string
+  }
 }
 
 interface Counterfactual {
@@ -93,6 +107,9 @@ function App() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [clips, setClips] = useState<ClipInfo[]>([])
   const [showOverlay, setShowOverlay] = useState(true)
+
+  // Agent mode state
+  const [agentMode, setAgentMode] = useState(false)
 
   // Field dimensions
   const FIELD_WIDTH = 105
@@ -238,9 +255,16 @@ function App() {
     <div className="container">
       {/* Header */}
       <header className="header">
-        <h1>FieldSense AI v3.0</h1>
-        <div className="confidence-badge" data-level={insight.confidence.toLowerCase()}>
-          {insight.confidence} Confidence
+        <h1>FieldSense AI v3.1</h1>
+        <div className="header-badges">
+          <div className="confidence-badge" data-level={insight.confidence.toLowerCase()}>
+            {insight.confidence} Confidence
+          </div>
+          {insight.agent_enabled && insight.chain_depth && (
+            <div className="chain-badge">
+              🔗 Chain: {insight.chain_depth} steps
+            </div>
+          )}
         </div>
       </header>
 
@@ -270,7 +294,7 @@ function App() {
         </div>
       </div>
 
-      {/* Live Mode Toggle */}
+      {/* Control Toggles */}
       <div className="live-controls">
         <button
           className={`live-toggle ${liveMode ? 'active' : ''}`}
@@ -288,6 +312,18 @@ function App() {
             Show overlay
           </label>
         )}
+        {/* Agent Mode Toggle */}
+        <label className="agent-toggle">
+          <input
+            type="checkbox"
+            checked={agentMode}
+            onChange={(e) => setAgentMode(e.target.checked)}
+          />
+          <span className="toggle-label">
+            🤖 Agent Mode
+            {agentMode && <span className="toggle-active"> (Active)</span>}
+          </span>
+        </label>
         {liveFrame && (
           <div className="live-stats">
             Frame: {liveFrame.frame_id} | xT: {liveFrame.xT_value.toFixed(3)}
@@ -596,6 +632,73 @@ function App() {
           )}
         </ul>
       </div>
+
+      {/* Agent Analysis Panel */}
+      {agentMode && insight.agent_enabled && insight.agent_analysis && (
+        <div className="agent-panel">
+          <h4>🤖 Agent Opportunity Chaining</h4>
+
+          <div className="agent-summary">
+            <div className="chain-info">
+              <strong>Chain Depth:</strong> {insight.agent_analysis.depth} steps
+            </div>
+            <div className="primary-action">
+              <strong>Primary Action:</strong> {insight.agent_analysis.primary_action}
+            </div>
+          </div>
+
+          {/* Upgraded Zones */}
+          {insight.upgraded_zones && Object.keys(insight.upgraded_zones).length > 0 && (
+            <div className="upgraded-zones">
+              <h5>Upgraded Decision Zones:</h5>
+              <div className="zones-grid">
+                {Object.entries(insight.upgraded_zones).map(([zoneName, zoneData]) => (
+                  <div key={zoneName} className="zone-card">
+                    <div className="zone-header">
+                      <span className="zone-name">{zoneName}</span>
+                      <span className={`zone-risk ${zoneData.risk_vector < 0 ? 'negative' : 'positive'}`}>
+                        Risk: {zoneData.risk_vector > 0 ? '+' : ''}{(zoneData.risk_vector * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="zone-stats">
+                      <div>Opportunity: {(zoneData.base_opportunity * 100).toFixed(0)}%</div>
+                      <div>Confidence: {(zoneData.confidence * 100).toFixed(0)}%</div>
+                    </div>
+                    <div className="zone-reasoning">{zoneData.reasoning}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Risks */}
+          {insight.agent_analysis.risks && insight.agent_analysis.risks.length > 0 && (
+            <div className="agent-risks">
+              <h5>Identified Risks:</h5>
+              <ul>
+                {insight.agent_analysis.risks.map((risk, idx) => (
+                  <li key={idx} className="risk-item">⚠️ {risk}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Chain Summary */}
+          {insight.agent_analysis.chain_summary && (
+            <div className="chain-summary">
+              <strong>Multi-Step Plan:</strong>
+              <p>{insight.agent_analysis.chain_summary}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Agent Mode Info (when disabled but available) */}
+      {!agentMode && (
+        <div className="agent-info">
+          <p>💡 Enable <strong>Agent Mode</strong> for dynamic opportunity chaining with risk analysis</p>
+        </div>
+      )}
     </div>
   )
 }

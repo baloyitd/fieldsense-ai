@@ -31,6 +31,11 @@ from .counter_reason import (
     reason_counterfactual,
     verify_counterfactuals
 )
+from .heatmap_reason import (
+    HeatmapReasoner,
+    reason_opportunity,
+    chain_heatmap_opportunities
+)
 
 __all__ = [
     'MiroThinkerAgent',
@@ -41,7 +46,10 @@ __all__ = [
     'reason_calibration',
     'CounterfactualReasoner',
     'reason_counterfactual',
-    'verify_counterfactuals'
+    'verify_counterfactuals',
+    'HeatmapReasoner',
+    'reason_opportunity',
+    'chain_heatmap_opportunities'
 ]
 
 __version__ = '3.1.0'
