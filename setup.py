@@ -24,8 +24,8 @@ setup(
     author='FieldSense Team',
     author_email='team@fieldsense.ai',
     url='https://github.com/baloyitd/fieldsense-ai',
-    packages=find_packages(where='src'),
-    package_dir={'': 'src'},
+    packages=find_packages(where='.', exclude=['tests*', 'ncaa_data/tests*']),
+    package_dir={'': '.'},
     python_requires='>=3.8',
     install_requires=[
         'numpy>=1.24.0',
@@ -38,6 +38,7 @@ setup(
     extras_require={
         'dev': [
             'pytest>=7.0.0',
+            'pytest-cov>=4.0.0',
             'pyinstaller>=5.0.0',
             'black>=23.0.0',
             'flake8>=6.0.0',
@@ -45,11 +46,15 @@ setup(
         'kaggle': [
             'kaggle>=1.5.0',
         ],
+        'ncaa': [
+            'pyarrow>=12.0.0',
+        ],
     },
     entry_points={
         'console_scripts': [
             'fieldsense=bin.ship:main',
             'fieldsense-cert=src.privacy.cert:one_click_export',
+            'ncaa-pipeline=ncaa_data.cli:main',
         ],
     },
     classifiers=[
