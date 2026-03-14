@@ -1,7 +1,7 @@
 """
 ncaa_models — NCAA Tournament Prediction Models
 ================================================
-Stage 05/10: Counterfactual analysis engine for upset detection.
+Stage 06/10: Ensemble stacking, calibration, and meta-learning.
 
 Exports
 -------
@@ -25,6 +25,14 @@ TrainingDistribution : Per-feature statistics for CVS.
 UpsetDetector       : Upset plausibility classification pipeline.
 classify_matchup    : Standalone matchup classification function.
 ALL_PERTURBATION_TYPES : All 5 perturbation type constants.
+SimpleAverageEnsemble    : Equal-weight ensemble.
+BrierWeightedEnsemble    : Inverse-Brier weighted ensemble.
+ContextualEnsemble       : Context-dependent weighted ensemble.
+MetaLearnerEnsemble      : NNLS stacking meta-learner ensemble.
+PlattScaler         : Platt scaling calibrator.
+IsotonicCalibrator  : Isotonic regression calibrator.
+PostHocCalibrator   : MatchupPredictor wrapper with calibration.
+compare_calibration : Utility to compare calibration methods.
 """
 
 from .base import MatchupPredictor
@@ -78,9 +86,23 @@ from .upset_detector import (
     COMPETITIVE_HI,
     UPSET_THRESHOLD,
 )
+from .ensemble import (
+    SimpleAverageEnsemble,
+    BrierWeightedEnsemble,
+    ContextualEnsemble,
+    build_simple_ensemble,
+    build_weighted_ensemble,
+)
+from .meta_learner import MetaLearnerEnsemble
+from .calibration import (
+    PlattScaler,
+    IsotonicCalibrator,
+    PostHocCalibrator,
+    compare_calibration,
+)
 
 __version__ = "1.0.0"
-__stage__ = "05/10"
+__stage__ = "06/10"
 
 __all__ = [
     # Base
@@ -143,4 +165,16 @@ __all__ = [
     "COMPETITIVE_LO",
     "COMPETITIVE_HI",
     "UPSET_THRESHOLD",
+    # Stage 06: Ensemble
+    "SimpleAverageEnsemble",
+    "BrierWeightedEnsemble",
+    "ContextualEnsemble",
+    "build_simple_ensemble",
+    "build_weighted_ensemble",
+    "MetaLearnerEnsemble",
+    # Stage 06: Calibration
+    "PlattScaler",
+    "IsotonicCalibrator",
+    "PostHocCalibrator",
+    "compare_calibration",
 ]
