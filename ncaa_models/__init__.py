@@ -1,7 +1,7 @@
 """
 ncaa_models — NCAA Tournament Prediction Models
 ================================================
-Stage 04/10: LoRA adapters for rapid tournament calibration.
+Stage 05/10: Counterfactual analysis engine for upset detection.
 
 Exports
 -------
@@ -18,6 +18,13 @@ per_seed_analysis   : Accuracy breakdown by seed matchup type.
 per_round_analysis  : Brier score breakdown by tournament round.
 build_submission    : Generate Kaggle submission CSV.
 temporal_cross_validate : Leave-one-season-out CV with expanding window.
+CounterfactualGenerator  : Generate what-if matchup scenarios.
+CounterfactualScenario   : Single counterfactual scenario dataclass.
+CVSComputer         : Counterfactual Validity Score computation.
+TrainingDistribution : Per-feature statistics for CVS.
+UpsetDetector       : Upset plausibility classification pipeline.
+classify_matchup    : Standalone matchup classification function.
+ALL_PERTURBATION_TYPES : All 5 perturbation type constants.
 """
 
 from .base import MatchupPredictor
@@ -46,9 +53,34 @@ from .evaluate import (
 )
 from .submit import build_submission, validate_submission, make_submission_id
 from .cv import temporal_cross_validate, build_matchup_df, CVResult, CVFold
+from .counterfactual import (
+    CounterfactualGenerator,
+    CounterfactualScenario,
+    ALL_PERTURBATION_TYPES,
+    INJURY,
+    FOUL_TROUBLE,
+    HOT_SHOOTING,
+    COLD_SHOOTING,
+    REST_ADVANTAGE,
+    DEFAULT_SEVERITIES,
+    DEFAULT_CVS_THRESHOLD,
+    BOTH_TEAMS,
+)
+from .cvs import CVSComputer, TrainingDistribution
+from .upset_detector import (
+    UpsetDetector,
+    classify_matchup,
+    BLOWOUT_LIKELY,
+    COMPETITIVE,
+    UPSET_PLAUSIBLE,
+    BLOWOUT_THRESHOLD,
+    COMPETITIVE_LO,
+    COMPETITIVE_HI,
+    UPSET_THRESHOLD,
+)
 
 __version__ = "1.0.0"
-__stage__ = "04/10"
+__stage__ = "05/10"
 
 __all__ = [
     # Base
@@ -88,4 +120,27 @@ __all__ = [
     "build_matchup_df",
     "CVResult",
     "CVFold",
+    # Stage 05: Counterfactual engine
+    "CounterfactualGenerator",
+    "CounterfactualScenario",
+    "ALL_PERTURBATION_TYPES",
+    "INJURY",
+    "FOUL_TROUBLE",
+    "HOT_SHOOTING",
+    "COLD_SHOOTING",
+    "REST_ADVANTAGE",
+    "DEFAULT_SEVERITIES",
+    "DEFAULT_CVS_THRESHOLD",
+    "BOTH_TEAMS",
+    "CVSComputer",
+    "TrainingDistribution",
+    "UpsetDetector",
+    "classify_matchup",
+    "BLOWOUT_LIKELY",
+    "COMPETITIVE",
+    "UPSET_PLAUSIBLE",
+    "BLOWOUT_THRESHOLD",
+    "COMPETITIVE_LO",
+    "COMPETITIVE_HI",
+    "UPSET_THRESHOLD",
 ]
