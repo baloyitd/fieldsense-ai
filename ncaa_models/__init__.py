@@ -17,6 +17,7 @@ temporal_cross_validate : Leave-one-season-out CV with expanding window.
 
 from .base import MatchupPredictor
 from .baseline import LogisticBaseline, FEATURE_COLS
+from .neural import NCAAPredictor, NCAANeuralModel, TORCH_AVAILABLE
 from .evaluate import (
     compute_brier_score,
     calibration_report,
@@ -33,6 +34,9 @@ __all__ = [
     "MatchupPredictor",
     "LogisticBaseline",
     "FEATURE_COLS",
+    "NCAAPredictor",
+    "NCAANeuralModel",
+    "TORCH_AVAILABLE",
     "compute_brier_score",
     "calibration_report",
     "per_seed_analysis",
