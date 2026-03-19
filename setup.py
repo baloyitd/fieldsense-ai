@@ -24,7 +24,17 @@ setup(
     author='FieldSense Team',
     author_email='team@fieldsense.ai',
     url='https://github.com/baloyitd/fieldsense-ai',
-    packages=find_packages(where='.', exclude=['tests*', 'ncaa_data/tests*']),
+    packages=find_packages(
+        where='.', 
+        exclude=[
+            'tests',
+            'tests.*',
+            'ui',
+            'ui.*',
+            'src-tauri',
+            'src-tauri.*',
+        ]
+    ),
     package_dir={'': '.'},
     python_requires='>=3.8',
     install_requires=[
